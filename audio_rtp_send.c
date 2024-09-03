@@ -168,7 +168,7 @@ void *audio_send(void *arg)
 
         memset(sendbuf,0,1500);//清空sendbuf；此时会将上次的时间戳清空，因此需要ts_current来保存上次的时间戳值
         
-		usleep(20*1000);
+		usleep(40*1000);
 	}
 
     fclose(file_g711);

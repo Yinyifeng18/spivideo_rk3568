@@ -22,9 +22,11 @@ int    send_thread;
 int    send_quit;
 } video_param_send;
 
+struct video_param_send *video_send_param;
 
 void *video_send(void *arg);
 
+void *video_send_call(void *arg);
 
 #endif
 

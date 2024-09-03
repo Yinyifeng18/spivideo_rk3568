@@ -58,13 +58,13 @@ char tmp[4096];
 char localip[128];  
 
 //下面是需要预定义的参数
-char *identity    = "sip:2002@192.168.1.104";  
-char *registerer  = "sip:192.168.1.104";  
-char *source_call = "sip:2002@192.168.1.104";  
-char *dest_call   = "sip:1009@192.168.1.104";// "sip:1001@192.168.1.114";
+char *identity    = "sip:2002@192.168.50.116";  
+char *registerer  = "sip:192.168.50.116";  
+char *source_call = "sip:2002@192.168.50.116";  
+char *dest_call   = "sip:2001@192.168.50.116";// "sip:1001@192.168.1.114";
 
-char *proxy="sip:192.168.1.104"; 
-char *fromuser="sip:2002@192.168.1.104";  //"sip:1008@192.168.1.114";  
+char *proxy="sip:192.168.50.116"; 
+char *fromuser="sip:2002@192.168.50.116";  //"sip:1008@192.168.1.114";  
 
 char *userid="2002";
 char *passwd="1234";
@@ -220,27 +220,27 @@ void *sipEventThread(void *arg)
     {  
       /* REGISTER related events 1-4*/
       case EXOSIP_REGISTRATION_NEW:  
-        printf("received new registration\n");
+        printf("==> received new registration\n");
         break;  
       
       case EXOSIP_REGISTRATION_SUCCESS:   
-        printf( "registrered successfully\n");
+        printf( "==> registrered successfully\n");
         break;  
       
       case EXOSIP_REGISTRATION_FAILURE:
-        printf("EXOSIP_REGISTRATION_FAILURE!\n");
+        printf("==> EXOSIP_REGISTRATION_FAILURE!\n");
         break;
       
       case EXOSIP_REGISTRATION_REFRESHED:
-        printf("REGISTRATION_REFRESHED\n");
+        printf("==> REGISTRATION_REFRESHED\n");
         break;
         
       case EXOSIP_REGISTRATION_TERMINATED:  
-        printf("Registration terminated\n");
+        printf("==> Registration terminated\n");
         break;  
       /* INVITE related events within calls */
       case EXOSIP_CALL_INVITE:  
-        printf ("Received a INVITE msg from %s:%s, UserName is %s, password is %s\n",je->request->req_uri->host,
+        printf ("==> Received a INVITE msg from %s:%s, UserName is %s, password is %s\n",je->request->req_uri->host,
         je->request->req_uri->port, je->request->req_uri->username, je->request->req_uri->password);
         calling = 1;
         eXosip_lock();
@@ -354,28 +354,33 @@ void *sipEventThread(void *arg)
         remote_sdp = NULL;
         break;  
       case EXOSIP_CALL_REINVITE:
-        printf("REINVITE\n");
+        printf("==>  REINVITE\n");
         break;
       case EXOSIP_CALL_NOANSWER:
+        printf("==> EXOSIP_CALL_NOANSWER\n");
         break;
       case EXOSIP_CALL_PROCEEDING:  
-        printf ("proceeding!\n");  
+        printf ("==> proceeding!\n");  
         break;  
       case EXOSIP_CALL_RINGING:  
-        printf ("ringing!\n");  
-        printf ("call_id is %d, dialog_id is %d \n", je->cid, je->did);  
+        printf ("==> ringing!\n");  
+        printf ("==> call_id is %d, dialog_id is %d \n", je->cid, je->did);  
       break;  
       case EXOSIP_CALL_ANSWERED:  
-        printf ("ok! connected!\n");  
+        printf ("==> ok! connected!\n");  
         call_id = je->cid;  
         dialog_id = je->did;  
         printf ("call_id is %d, dialog_id is %d \n", je->cid, je->did);  
+        printf("2.==>%s\n", ack);
         eXosip_call_build_ack(je->did, &ack);  
         eXosip_call_send_ack(je->did, ack);  
 
-        //得到消息体,该消息就是SDP格式.
-        remote_sdp = eXosip_get_remote_sdp (je->did);
-        con_req = eXosip_get_audio_connection(remote_sdp);
+    
+
+
+        // 得到消息体,该消息就是SDP格式.
+        remote_sdp   = eXosip_get_remote_sdp (je->did);
+        con_req      = eXosip_get_audio_connection(remote_sdp);
         md_audio_req = eXosip_get_audio_media(remote_sdp); 
         md_video_req = eXosip_get_video_media(remote_sdp); 
         
@@ -432,34 +437,113 @@ void *sipEventThread(void *arg)
         //传入音频线程参数
         audiosendparam.dest_ip=ip; 
         audiorecvparam.dest_ip=ip; 
-        audiosendparam.dest_port=audiorecvparam.dest_port=atoi(md_audio_req->m_port)+1;
+        audiosendparam.dest_port=audiorecvparam.dest_port=atoi(md_audio_req->m_port);
 
         //传入视频线程参数
         videosendparam.dest_ip=ip;
         videorecvparam.dest_ip=ip;
-        videosendparam.dest_port=videorecvparam.dest_port=atoi(md_video_req->m_port)+1;
+        videosendparam.dest_port=videorecvparam.dest_port=atoi(md_video_req->m_port);
             
         sdp_message_free(remote_sdp);
 
         remote_sdp = NULL;
 
+        // ----------------------------音频----------------------
+        if(isHaveAudio == 1)
+        {
+          printf("Create Audio Handle\n");
+          if(open_audio_socket() < 0)  //打开音频发送接收socket
+            break;
 
+          audiorecvparam.recv_quit=0;
+          audiosendparam.send_quit=1;
+
+          //音频发送线程
+          eXosip_lock();  
+          printf("conn_add=%s,audio_port=%d\n",audiosendparam.dest_ip,audiosendparam.dest_port);
+        
+          if(pthread_create(&audio_thread_send, NULL, audio_send_call, &audiosendparam) < 0)
+          {
+            fprintf(stderr,RED"[%s]:"NONE"audio_send_call_thread_create failed\n",__FILE__);
+          }
+          else
+          {
+            fprintf(stderr,GREEN"[%s]:"NONE"audio_send_call_thread created!\n",__FILE__);
+          }
+          eXosip_unlock();
+
+          //音频接收线程
+          eXosip_lock();  
+
+          if(pthread_create(&audio_thread_recv, NULL, audio_recv, &audiorecvparam) < 0)
+          {
+            fprintf(stderr,RED"[%s]:"NONE"audio_thread_recv failed\n",__FILE__);
+          }
+          else
+          {
+            fprintf(stderr,GREEN"[%s]:"NONE"audio_thread_recv created!\n",__FILE__);
+          }
+          eXosip_unlock(); 
+        }
+        // ------------------------------------------------------
+
+        // ----------------------------视频----------------------
+        if(isHaveVideo == 1)
+        {
+          printf("Create Video Handle\n");
+          if(open_video_socket()<0)
+            break;//打开视频发送接收socket
+
+          videorecvparam.recv_quit=0;
+          videosendparam.send_quit=1;
+
+          // 视频发送
+          eXosip_lock();  
+          if(pthread_create(&video_thread_send, NULL, video_send_call, &videosendparam) < 0)
+          {
+            fprintf(stderr,RED"[%s]:"NONE"video_thread_send failed\n",__FILE__);
+          }
+          else
+          {
+            fprintf(stderr,GREEN"[%s]:"NONE"video_thread_send created!\n",__FILE__);
+          }
+          eXosip_unlock(); 
+          
+          //视频接收线程
+          eXosip_lock();  
+
+          if(pthread_create(&video_thread_recv, NULL, video_recv, &videorecvparam) < 0)
+          {
+            fprintf(stderr,RED"[%s]:"NONE"video_thread_recv failed\n",__FILE__);
+          }
+          else
+          {
+            fprintf(stderr,GREEN"[%s]:"NONE"video_thread_recv created!\n",__FILE__);
+          }
+          eXosip_unlock(); 
+        }
       
         break;  
       case EXOSIP_CALL_REDIRECTED:
+        printf ("==> EXOSIP_CALL_REDIRECTED\n");  
         break;
       case EXOSIP_CALL_REQUESTFAILURE:
+        printf ("==> EXOSIP_CALL_REQUESTFAILURE\n"); 
         break;
       case EXOSIP_CALL_SERVERFAILURE:
+        printf ("==> EXOSIP_CALL_SERVERFAILURE\n"); 
         break;
       case EXOSIP_CALL_GLOBALFAILURE:
+        printf ("==> EXOSIP_CALL_GLOBALFAILURE\n"); 
         break;
       case EXOSIP_CALL_CANCELLED:
+        printf ("==> EXOSIP_CALL_CANCELLED\n"); 
         break;
       case EXOSIP_CALL_TIMEOUT:
+        printf ("==> EXOSIP_CALL_TIMEOUT\n"); 
         break;
       case EXOSIP_CALL_CLOSED:  
-        printf ("the call sid closed!\n");  //呼叫结束
+        printf ("==> the call sid closed!\n");  //呼叫结束
 
         audiorecvparam.recv_quit=0;
 			  audiosendparam.send_quit=0;
@@ -477,7 +561,7 @@ void *sipEventThread(void *arg)
        
         break;  
       case EXOSIP_CALL_ACK:  
-        printf ("ACK received!\n");  
+        printf ("==> ACK received!\n");  
         call_id = je->cid;  
         dialog_id = je->did;  
 
@@ -574,14 +658,17 @@ void *sipEventThread(void *arg)
         eXosip_message_send_answer (je->tid, 200,answer);
         break;
       case EXOSIP_CALL_MESSAGE_NEW:
+        printf("==> EXOSIP_CALL_MESSAGE_NEW\n");
         break;
       case EXOSIP_CALL_MESSAGE_PROCEEDING:
+        printf("==> EXOSIP_CALL_MESSAGE_PROCEEDING\n");
         break;
       case EXOSIP_MESSAGE_ANSWERED:      /**< announce a 200ok  */
       case EXOSIP_MESSAGE_REDIRECTED:     /**< announce a failure. */
       case EXOSIP_MESSAGE_REQUESTFAILURE:  /**< announce a failure. */
       case EXOSIP_MESSAGE_SERVERFAILURE:  /**< announce a failure. */
       case EXOSIP_MESSAGE_GLOBALFAILURE:    /**< announce a failure. */
+        printf("==> EXOSIP_MESSAGE_ANSWERED\n");
         break;
       default: 
          printf ("other response:type=%d\n",je->type);   
@@ -663,7 +750,7 @@ int   main (int argc, char *argv[])
             "c=IN IP4 %s\r\n"
             "t=0 0\r\n"
             "m=audio 54000 RTP/AVP 8\r\n"
-            "a=rtpmap:8 PCMU/8000\r\n"
+            "a=rtpmap:0 PCMU/8000\r\n"
             "m=video 54002 RTP/AVP 96\r\n"
             "a=rtpmap:96 H264/90000\r\n",
             localip2,localip2

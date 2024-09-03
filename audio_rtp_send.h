@@ -37,6 +37,6 @@ int      send_quit;
 } audio_param_send;
 
 void *audio_send(void *arg);
-
+void *audio_send_call(void *arg);
 
 #endif

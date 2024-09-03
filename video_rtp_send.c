@@ -321,3 +321,84 @@ void *video_send(void *arg)
 }	
 
 
+
+
+void *video_send_call(void *arg)
+{
+	int fd;
+	unsigned char *frame;
+    int frameSize;
+	int fps = 30;
+    int startCode;
+    int i = 0;
+    int cnt = 0;
+
+	video_param_send *video_send_param= (video_param_send *)arg;
+	fprintf(stderr,BLUE"[%s]:" NONE"video_send_param:%s:%d\n", __FILE__,video_send_param->dest_ip, video_send_param->dest_port);
+	
+	//网络初始化
+	udpsock = sock_create(video_send_param->dest_ip, video_send_param->dest_port,video_send_param->local_port);
+
+	/* 打开文件 */
+	fd = open("video.h264", O_RDONLY);
+    if(fd < 0)
+    {
+        printf("failed to open %s\n", "video.h264");
+		
+        pthread_exit(0);
+		return NULL;
+    }
+
+	struct RtpPacket* rtpPacket;
+
+	rtpPacket = (struct RtpPacket*)malloc(500000);
+    frame = (uint8_t*)malloc(500000);
+
+	rtpHeaderInit(rtpPacket, 0, 0, 0, RTP_VESION, RTP_PAYLOAD_TYPE_H264_CALL, 0,
+                 0, 0, 0x88923423);
+
+    fprintf(stderr, BLUE"[%s]:" NONE"video_send_param:%s:%d\n", __FILE__,video_send_param->dest_ip, video_send_param->dest_port);
+
+	while (video_send_param->send_quit==1)
+	{
+		/* 读数据 */
+		frameSize = getFrameFromH264File(fd, frame, 500000);
+		if(frameSize < 0)
+        {
+            printf("read err\n");
+            continue;
+        }
+
+		if(startCode3(frame))
+            startCode = 3;
+        else
+            startCode = 4;
+
+        frameSize -= startCode;
+
+        //printf("rtpSendH264Frame h264 len: %d\n", frameSize);
+        //for(i = 0; i < 200; i++)
+        //{
+        //    printf("%02x ", frame[i]);
+        //    if(i % 16 == 0)
+        //        printf("\r\n");
+        //}
+        //printf("\r\n");
+
+        rtpSendH264Frame(udpsock, video_send_param->dest_ip, video_send_param->dest_port,
+                            rtpPacket, frame+startCode, frameSize);
+        rtpPacket->rtpHeader.timestamp += 90000/fps;  
+        
+		usleep(1000*1000/fps);
+	}
+
+
+	printf("video send thread exit\n");
+
+	free(rtpPacket);
+    free(frame);
+
+	pthread_exit(0);
+	
+	return NULL;
+}	
